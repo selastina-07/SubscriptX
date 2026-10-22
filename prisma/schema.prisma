@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PlanCode {
+  FREE
+  BRONZE
+  SILVER
+  GOLD
+}
+
+enum BillingInterval {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+}
+
+enum OrderStatus {
+  CREATED
+  PAYMENT_PENDING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  AUTHORIZED
+  CAPTURED
+  FAILED
+}
+
+enum PaymentMode {
+  RAZORPAY
+  DEMO
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  passwordHash String
+  createdAt    DateTime      @default(now())
+  sessions     Session[]
+  subscription Subscription?
+  orders       Order[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Subscription {
+  id          String             @id @default(cuid())
+  userId      String             @unique
+  plan        PlanCode           @default(FREE)
+  status      SubscriptionStatus @default(ACTIVE)
+  interval    BillingInterval?
+  startsAt    DateTime           @default(now())
+  expiresAt   DateTime?
+  cancelledAt DateTime?
+  updatedAt   DateTime           @updatedAt
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Order {
+  id                 String          @id @default(cuid())
+  userId             String
+  plan               PlanCode
+  billingInterval    BillingInterval
+  amount             Int
+  currency           String          @default("INR")
+  status             OrderStatus     @default(CREATED)
+  gatewayOrderId     String?         @unique
+  receipt            String          @unique
+  failureReason      String?
+  activatedAt        DateTime?
+  subscriptionEndsAt DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments           Payment[]
+  invoice            Invoice?
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+model Payment {
+  id               String        @id @default(cuid())
+  orderId          String
+  gatewayPaymentId String?       @unique
+  status           PaymentStatus @default(AUTHORIZED)
+  method           String?
+  failureReason    String?
+  amount           Int
+  currency         String        @default("INR")
+  mode             PaymentMode   @default(RAZORPAY)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  order            Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+}
+
+model Invoice {
+  id          String          @id @default(cuid())
+  orderId     String          @unique
+  number      String          @unique
+  amount      Int
+  currency    String          @default("INR")
+  plan        PlanCode
+  interval    BillingInterval
+  startsAt    DateTime
+  expiresAt   DateTime
+  issuedAt    DateTime        @default(now())
+  emailSentAt DateTime?
+  order       Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
